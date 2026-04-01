@@ -105,11 +105,14 @@
 
         // 5. 관리자 인증 (비밀번호: 0000)
         function checkAdmin() {
-            const pw = prompt("비밀번호 입력");
+            const pw = prompt("비밀번호 0000을 입력하세요");
             if (pw === "0000") {
-                isAdmin = true;
+                console.log("인증 성공"); // 확인용
                 document.getElementById('uploadModal').style.display = 'flex';
-                loadVideos(); // 삭제 버튼 보이게 다시 로드
+                isAdmin = true;
+                loadVideos(); 
+            } else {
+                alert("비밀번호가 틀렸습니다.");
             }
         }
 
