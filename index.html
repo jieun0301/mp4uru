@@ -98,7 +98,7 @@ async function upload(file){
     return;
   }
 
-  const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${filePath}`;
+  const rawUrl = `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${filePath}`;
 
   let decoded=[]; let sha;
   const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`,
