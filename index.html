@@ -3,98 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>My Private TikTok</title>
+    <title>My Private Feed</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        /* 틱톡 바이브의 핵심: 딱딱 끊기는 스크롤 */
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; }
-        .video-container {
-            height: 100dvh;
-            scroll-snap-type: y mandatory;
-            overflow-y: scroll;
-            scrollbar-width: none; /* 파이어폭스 스크롤바 숨김 */
-        }
-        .video-container::-webkit-scrollbar { display: none; } /* 크롬 스크롤바 숨김 */
-        .video-section {
-            height: 100dvh;
-            scroll-snap-align: start;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        /* 영상 안 잘리게 하는 마법의 설정 */
-        video {
-            max-height: 100%;
-            max-width: 100%;
-            object-fit: contain; /* 이 설정이 영상을 절대 안 잘리게 합니다 */
-        }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: sans-serif; }
+        .video-container { height: 100dvh; scroll-snap-type: y mandatory; overflow-y: scroll; scrollbar-width: none; }
+        .video-container::-webkit-scrollbar { display: none; }
+        .video-section { height: 100dvh; scroll-snap-align: start; position: relative; display: flex; align-items: center; justify-content: center; background: black; }
+        video { max-height: 100%; max-width: 100%; object-fit: contain; }
+        .admin-btn { position: absolute; top: 10px; right: 10px; z-index: 50; }
     </style>
 </head>
 <body>
 
     <div class="video-container" id="feed">
-        <div class="video-section">
-            <video src="https://assets.mixkit.co/videos/preview/mixkit-girl-in-neon-light-1282-large.mp4" loop muted playsinline onclick="togglePlay(this)"></video>
-            <div class="absolute bottom-10 left-5 text-white">
-                <p class="font-bold">@MyVibe</p>
-                <p class="text-sm text-gray-300">첫 번째 영상입니다! 🔥</p>
-            </div>
         </div>
+
+    <div id="adminPanel" class="fixed bottom-5 right-5 z-50">
+        <button onclick="checkAdmin()" id="lockBtn" class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-md opacity-30 hover:opacity-100">🔒</button>
     </div>
 
-    <button onclick="checkAdmin()" class="fixed bottom-5 right-5 w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-md opacity-30 hover:opacity-100 transition-opacity">
-        🔒
-    </button>
-
-    <div id="uploadModal" class="fixed inset-0 bg-black/80 hidden flex-col items-center justify-center text-white p-5">
-        <h2 class="mb-5 text-xl font-bold">비밀 업로드</h2>
-        <input type="file" id="videoInput" accept="video/*" class="mb-5 border p-2 w-full max-w-xs">
+    <div id="uploadModal" class="fixed inset-0 bg-black/90 hidden flex-col items-center justify-center text-white p-5 z-[100]">
+        <h2 class="mb-5 text-xl font-bold">영상 관리</h2>
+        <input type="file" id="videoInput" accept="video/*" class="mb-5 border p-2 w-full max-w-xs bg-transparent">
         <div class="flex gap-4">
-            <button onclick="uploadVideo()" class="bg-blue-600 px-6 py-2 rounded">올리기</button>
+            <button onclick="uploadVideo()" id="uploadBtn" class="bg-blue-600 px-6 py-2 rounded">업로드</button>
             <button onclick="closeModal()" class="bg-gray-600 px-6 py-2 rounded">닫기</button>
         </div>
+        <div id="status" class="mt-4 text-sm text-blue-400"></div>
     </div>
 
     <script>
-        // 1. 재생/일시정지 컨트롤
-        function togglePlay(v) {
-            v.paused ? v.play() : v.pause();
-        }
+        // --- 설정 (본인의 정보를 입력하세요) ---
+        const SUPABASE_URL = 'https://emizkuoleiqbkobvmbvu.supabase.co'; 
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXprdW9sZWlxYmtvYnZtYnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzI3OTgsImV4cCI6MjA5MDYwODc5OH0.FKqJ-i72dxKV8LB1dy6WZDJgJmScMYMU1awF5yFhCNU';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 2. 비밀번호 확인
-        function checkAdmin() {
-            const pw = prompt("비밀번호를 입력하세요.");
-            if (pw === "0000") { // 비밀번호 설정
-                document.getElementById('uploadModal').style.display = 'flex';
-            } else {
-                alert("틀렸습니다.");
+        let isAdmin = false;
+
+        // 1. 영상 목록 불러오기
+        async function loadVideos() {
+            const feed = document.getElementById('feed');
+            feed.innerHTML = ''; // 초기화
+
+            const { data, error } = await supabase.storage.from('videos').list();
+            
+            if (data) {
+                data.forEach(file => {
+                    const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(file.name);
+                    addVideoToFeed(publicUrl, file.name);
+                });
             }
         }
 
-        function closeModal() {
-            document.getElementById('uploadModal').style.display = 'none';
+        // 2. 피드에 영상 추가 (삭제 버튼 포함)
+        function addVideoToFeed(url, fileName) {
+            const feed = document.getElementById('feed');
+            const section = document.createElement('div');
+            section.className = 'video-section';
+            section.innerHTML = `
+                <video src="${url}" loop muted playsinline onclick="this.paused ? this.play() : this.pause()"></video>
+                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-20 right-5 bg-red-600 text-white px-3 py-1 rounded-full text-xs opacity-50 hover:opacity-100">삭제</button>` : ''}
+                <div class="absolute bottom-10 left-5 text-white pointer-events-none">
+                    <p class="font-bold text-sm opacity-70">${fileName}</p>
+                </div>
+            `;
+            feed.appendChild(section);
+            setupObserver();
         }
 
-        // 3. 실제 업로드 로직 (여기에 Supabase나 Firebase를 연결하면 완성!)
-        function uploadVideo() {
-            const file = document.getElementById('videoInput').files[0];
-            if (!file) return alert("영상을 선택하세요.");
-            
-            alert(file.name + " 파일 업로드 로직을 시작합니다. (DB 연결 필요)");
-            closeModal();
+        // 3. 업로드 로직
+        async function uploadVideo() {
+            const fileInput = document.getElementById('videoInput');
+            const file = fileInput.files[0];
+            if (!file) return alert("파일을 선택하세요!");
+
+            const btn = document.getElementById('uploadBtn');
+            const status = document.getElementById('status');
+            btn.disabled = true;
+            status.innerText = "업로드 중... 잠시만 기다리세요.";
+
+            const fileName = `${Date.now()}_${file.name}`;
+            const { data, error } = await supabase.storage.from('videos').upload(fileName, file);
+
+            if (error) {
+                alert("업로드 실패: " + error.message);
+            } else {
+                alert("업로드 성공!");
+                location.reload(); // 새로고침해서 반영
+            }
         }
 
-        // 4. 스크롤 시 자동 재생 로직
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                const v = entry.target.querySelector('video');
-                if (entry.isIntersecting) v.play();
-                else v.pause();
-            });
-        }, { threshold: 0.7 });
+        // 4. 삭제 로직
+        async function deleteVideo(fileName) {
+            if (!confirm("정말 삭제할까요?")) return;
+            const { data, error } = await supabase.storage.from('videos').remove([fileName]);
+            if (error) alert("삭제 실패");
+            else location.reload();
+        }
 
-        document.querySelectorAll('.video-section').forEach(section => observer.observe(section));
+        // 5. 관리자 인증 (비밀번호: 0000)
+        function checkAdmin() {
+            const pw = prompt("비밀번호 입력");
+            if (pw === "0000") {
+                isAdmin = true;
+                document.getElementById('uploadModal').style.display = 'flex';
+                loadVideos(); // 삭제 버튼 보이게 다시 로드
+            }
+        }
+
+        function closeModal() { document.getElementById('uploadModal').style.display = 'none'; }
+
+        // 6. 스크롤 자동재생 제어
+        function setupObserver() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    const v = entry.target.querySelector('video');
+                    if (entry.isIntersecting) v.play().catch(() => {});
+                    else v.pause();
+                });
+            }, { threshold: 0.7 });
+            document.querySelectorAll('.video-section').forEach(s => observer.observe(s));
+        }
+
+        // 앱 시작 시 로드
+        loadVideos();
     </script>
 </body>
 </html>
