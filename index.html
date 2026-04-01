@@ -76,6 +76,63 @@ function getToken(){
   return token;
 }
 
+function extractPathFromUrl(url){
+  const marker = `/gh/${OWNER}/${REPO}@${BRANCH}/`;
+  const idx = url.indexOf(marker);
+  if(idx === -1) return null;
+  return url.substring(idx + marker.length);
+}
+
+async function deleteCurrent(){
+  const token = getToken();
+  if(!token) return;
+
+  const v = videos[current];
+  if(!v) return;
+
+  if(!confirm("삭제할까?")) return;
+
+  const filePath = extractPathFromUrl(v.url);
+  if(!filePath){ alert("경로 파싱 실패"); return; }
+
+  // 1. 파일 삭제
+  const fileRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${filePath}`, {
+    headers:{ Authorization:`Bearer ${token}` }
+  });
+
+  const fileData = await fileRes.json();
+
+  await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${filePath}`, {
+    method:"DELETE",
+    headers:{ Authorization:`Bearer ${token}`, Accept:"application/vnd.github+json" },
+    body: JSON.stringify({ message:"delete video", sha:fileData.sha, branch:BRANCH })
+  });
+
+  // 2. JSON 수정
+  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`, {
+    headers:{ Authorization:`Bearer ${token}` }
+  });
+
+  const json = await res.json();
+  const sha = json.sha;
+  const decoded = JSON.parse(atob(json.content));
+
+  const updated = decoded.filter(item => item.id !== v.id);
+
+  await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`, {
+    method:"PUT",
+    headers:{ Authorization:`Bearer ${token}`, Accept:"application/vnd.github+json" },
+    body: JSON.stringify({
+      message:"delete video from json",
+      content:btoa(unescape(encodeURIComponent(JSON.stringify(updated,null,2)))),
+      sha,
+      branch:BRANCH
+    })
+  });
+
+  alert("삭제 완료 → 새로고침");
+}
+
 async function uploadMultiple(files){
   const token = getToken();
   if(!token) return;
@@ -149,6 +206,7 @@ function render(){
       <div class="controls">
         <button onclick="prev()">UP</button>
         <button onclick="next()">DOWN</button>
+        <button onclick="deleteCurrent()">DELETE</button>
         <button onclick="localStorage.removeItem('gh_token')">RESET</button>
         <input type="file" accept="video/*" id="upload" multiple/>
       </div>
