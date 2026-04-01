@@ -7,151 +7,192 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: sans-serif; }
-        .video-container { height: 100dvh; scroll-snap-type: y mandatory; overflow-y: scroll; scrollbar-width: none; -ms-overflow-style: none; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        /* 틱톡 바이브 스크롤 설정 */
+        .video-container { 
+            height: 100dvh; 
+            scroll-snap-type: y mandatory; 
+            overflow-y: scroll; 
+            scrollbar-width: none; 
+            -ms-overflow-style: none;
+            scroll-behavior: smooth;
+        }
         .video-container::-webkit-scrollbar { display: none; }
-        .video-section { height: 100dvh; scroll-snap-align: start; position: relative; display: flex; align-items: center; justify-content: center; background: black; }
-        video { max-height: 100%; max-width: 100%; object-fit: contain; background: black; }
+        .video-section { 
+            height: 100dvh; 
+            scroll-snap-align: start; 
+            position: relative; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            background: black; 
+        }
+        /* 영상 잘림 방지 (Contain) */
+        video { 
+            max-height: 100%; 
+            max-width: 100%; 
+            object-fit: contain; 
+            background: black; 
+        }
     </style>
 </head>
 <body>
 
     <div class="video-container" id="feed">
-        <div class="text-white flex items-center justify-center h-full">로딩 중...</div>
+        <div class="text-white flex items-center justify-center h-full">영상을 불러오는 중...</div>
     </div>
 
-    <div class="fixed bottom-5 right-5 z-50 flex flex-col gap-3">
-        <button onclick="checkAdmin()" class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-md opacity-30 hover:opacity-100">🔒</button>
+    <div class="fixed bottom-6 right-6 z-50">
+        <button onclick="checkAdmin()" class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-md opacity-20 hover:opacity-100 transition-opacity">🔒</button>
     </div>
 
-    <div id="uploadModal" class="fixed inset-0 bg-black/90 hidden flex-col items-center justify-center text-white p-5 z-[100]">
-        <h2 class="mb-5 text-xl font-bold">영상 관리</h2>
-        <input type="file" id="videoInput" accept="video/*" class="mb-5 border p-2 w-full max-w-xs bg-transparent">
-        <div class="flex gap-4">
-            <button onclick="uploadVideo()" id="uploadBtn" class="bg-blue-600 px-6 py-2 rounded font-bold">업로드 시작</button>
-            <button onclick="closeModal()" class="bg-gray-600 px-6 py-2 rounded">닫기</button>
+    <div id="uploadModal" class="fixed inset-0 bg-black/95 hidden flex-col items-center justify-center text-white p-5 z-[100]">
+        <div class="bg-gray-900 p-8 rounded-2xl w-full max-w-sm flex flex-col items-center border border-gray-700">
+            <h2 class="mb-6 text-xl font-bold text-blue-400">비밀 업로드</h2>
+            <input type="file" id="videoInput" accept="video/*" class="mb-6 block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700">
+            <div class="flex gap-3 w-full">
+                <button onclick="uploadVideo()" id="uploadBtn" class="flex-1 bg-blue-600 py-3 rounded-xl font-bold active:scale-95 transition-transform">업로드</button>
+                <button onclick="closeModal()" class="flex-1 bg-gray-700 py-3 rounded-xl font-bold">닫기</button>
+            </div>
+            <div id="status" class="mt-4 text-xs text-blue-300 font-medium"></div>
         </div>
-        <div id="status" class="mt-4 text-sm text-blue-400 font-bold"></div>
     </div>
 
     <script>
+        // --- [중요] 본인의 Supabase 정보를 입력하세요 ---
         const S_URL = 'https://emizkuoleiqbkobvmbvu.supabase.co'; 
         const S_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXprdW9sZWlxYmtvYnZtYnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzI3OTgsImV4cCI6MjA5MDYwODc5OH0.FKqJ-i72dxKV8LB1dy6WZDJgJmScMYMU1awF5yFhCNU';
         const s_client = supabase.createClient(S_URL, S_KEY);
 
         let isAdmin = false;
 
-        // 1. 영상 목록 불러오기 (최신순 정렬)
+        // 1. 영상 목록 불러오기 + 랜덤 섞기
         async function loadVideos() {
             const feed = document.getElementById('feed');
-            const { data, error } = await s_client.storage.from('videos').list('', {
-                sortBy: { column: 'created_at', order: 'desc' }
-            });
+            const { data, error } = await s_client.storage.from('videos').list();
             
             if (error) {
-                feed.innerHTML = '<div class="text-white p-10">연결 오류</div>';
+                feed.innerHTML = `<div class="text-white p-10">연결 오류: ${error.message}</div>`;
                 return;
             }
 
             feed.innerHTML = '';
-            data.forEach(file => {
-                if (file.name === '.emptyFolderPlaceholder') return;
+            
+            // 유효한 영상만 필터링하고 랜덤으로 섞기
+            const shuffled = data
+                .filter(file => file.name !== '.emptyFolderPlaceholder')
+                .sort(() => Math.random() - 0.5);
+
+            if (shuffled.length === 0) {
+                feed.innerHTML = '<div class="text-white p-10 text-center opacity-50 text-sm italic">업로드된 영상이 없습니다.<br>자물쇠 아이콘을 눌러보세요.</div>';
+                return;
+            }
+
+            shuffled.forEach(file => {
                 const { data: { publicUrl } } = s_client.storage.from('videos').getPublicUrl(file.name);
                 addVideoToFeed(publicUrl, file.name);
             });
+
             setupObserver();
         }
 
-        // 2. 피드에 영상 추가
+        // 2. 피드에 영상 추가 (자동 다음 영상 기능 포함)
         function addVideoToFeed(url, fileName) {
             const feed = document.getElementById('feed');
             const section = document.createElement('div');
             section.className = 'video-section';
             section.innerHTML = `
                 <video src="${url}" 
-                       loop 
-                       muted 
                        playsinline 
+                       muted 
                        preload="none" 
-                       class="cursor-pointer"
-                       onclick="togglePlay(this)">
+                       onended="autoNext(this)" 
+                       onclick="vPlay(this)"
+                       class="cursor-pointer">
                 </video>
-                <button onclick="toggleMute(this)" class="absolute bottom-24 right-5 bg-black/40 text-white p-3 rounded-full z-50 text-xl">🔇</button>
-                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-5 right-5 bg-red-600 text-white px-4 py-2 rounded-full text-xs z-50">삭제</button>` : ''}
+                <button onclick="vMute(this)" class="absolute bottom-24 right-6 bg-black/40 text-white p-4 rounded-full z-50 shadow-lg border border-white/10 text-xl">🔇</button>
+                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-8 right-6 bg-red-600/80 text-white px-4 py-2 rounded-full text-xs font-bold z-50 active:scale-90 transition-transform">삭제</button>` : ''}
             `;
             feed.appendChild(section);
         }
 
-        // 3. 재생/일시정지 및 소리 제어
-        function togglePlay(v) { v.paused ? v.play() : v.pause(); }
-        function toggleMute(btn) {
+        // 3. 제어 로직 (재생, 음소거, 자동 다음)
+        function vPlay(v) { v.paused ? v.play() : v.pause(); }
+        function vMute(btn) {
             const video = btn.parentElement.querySelector('video');
             video.muted = !video.muted;
             btn.innerText = video.muted ? '🔇' : '🔊';
         }
+        function autoNext(v) {
+            const next = v.closest('.video-section').nextElementSibling;
+            if (next) next.scrollIntoView({ behavior: 'smooth' });
+        }
 
-        // 4. [핵심] 무조건 처음부터 재생 로직 (Intersection Observer)
+        // 4. [핵심] 최적화 관찰자 (처음부터 재생 로직)
         function setupObserver() {
-            const observer = new IntersectionObserver((entries) => {
+            const obs = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
-                    const video = entry.target.querySelector('video');
-                    if (video) {
+                    const v = entry.target.querySelector('video');
+                    if (v) {
                         if (entry.isIntersecting) {
-                            // 화면에 들어오면 시간을 0으로 돌리고 재생
-                            video.currentTime = 0; 
-                            video.play().catch(() => {});
+                            v.currentTime = 0; // 매번 처음부터 다시 재생
+                            v.play().catch(() => {});
                         } else {
-                            // 화면에서 나가면 일시정지 (리소스 절약)
-                            video.pause();
+                            v.pause();
                         }
                     }
                 });
-            }, { threshold: 0.6 }); // 60% 이상 보일 때 작동
+            }, { threshold: 0.6 });
 
-            document.querySelectorAll('.video-section').forEach(s => observer.observe(s));
+            document.querySelectorAll('.video-section').forEach(s => obs.observe(s));
         }
 
-        // 5. 업로드 (파일이름 안전하게 변경)
+        // 5. 안전한 업로드 (파일 이름 오류 방지)
         async function uploadVideo() {
-            const fileInput = document.getElementById('videoInput');
-            const file = fileInput.files[0];
-            if (!file) return alert("파일 선택!");
+            const input = document.getElementById('videoInput');
+            const file = input.files[0];
+            if (!file) return alert("파일을 선택하세요!");
 
             const btn = document.getElementById('uploadBtn');
-            const status = document.getElementById('status');
+            const stat = document.getElementById('status');
             btn.disabled = true;
-            status.innerText = "업로드 중... 창을 닫지 마세요.";
+            stat.innerText = "서버로 보내는 중... (기다려 주세요)";
 
             const ext = file.name.split('.').pop();
-            const safeName = `v_${Date.now()}.${ext}`;
+            const safeName = `v_${Date.now()}_${Math.floor(Math.random()*1000)}.${ext}`;
 
-            const { data, error } = await s_client.storage.from('videos').upload(safeName, file);
+            const { error } = await s_client.storage.from('videos').upload(safeName, file);
 
             if (error) {
                 alert("실패: " + error.message);
                 btn.disabled = false;
+                stat.innerText = "";
             } else {
-                alert("성공!");
+                alert("업로드 성공!");
                 location.reload();
             }
         }
 
         async function deleteVideo(name) {
-            if (confirm("삭제할까요?")) {
+            if (confirm("이 영상을 영구 삭제할까요?")) {
                 await s_client.storage.from('videos').remove([name]);
                 location.reload();
             }
         }
 
         function checkAdmin() {
-            if (prompt("비밀번호 입력") === "0000") {
+            const pw = prompt("관리자 비밀번호를 입력하세요.");
+            if (pw === "0000") {
                 isAdmin = true;
                 document.getElementById('uploadModal').style.display = 'flex';
-                loadVideos();
+                loadVideos(); 
+            } else if (pw !== null) {
+                alert("비밀번호가 틀렸습니다.");
             }
         }
         function closeModal() { document.getElementById('uploadModal').style.display = 'none'; }
 
+        // 초기 로딩
         loadVideos();
     </script>
 </body>
