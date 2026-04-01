@@ -3,51 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>릴스는 오늘도 시끄러워</title>
+    <title>My Private Reel</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: 'Roboto', sans-serif; -webkit-font-smoothing: antialiased; }
+        
         .video-container { 
-            height: 100dvh; scroll-snap-type: y mandatory; overflow-y: scroll; 
-            scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+            height: 100dvh; 
+            scroll-snap-type: y mandatory; 
+            overflow-y: scroll; 
+            scrollbar-width: none; 
+            -ms-overflow-style: none;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
         }
         .video-container::-webkit-scrollbar { display: none; }
+
         .video-section { 
-            height: 100dvh; scroll-snap-align: start; scroll-snap-stop: always; 
-            position: relative; display: flex; align-items: center; justify-content: center; background: black; 
+            height: 100dvh; 
+            scroll-snap-align: start; 
+            scroll-snap-stop: always; /* 가속도 붙어도 무조건 다음 칸에서 멈춤 */
+            position: relative; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            background: black; 
         }
-        video { max-height: 100%; max-width: 100%; object-fit: contain; background: black; }
+
+        video { 
+            max-height: 100%; 
+            max-width: 100%; 
+            object-fit: contain; 
+            background: black; 
+            pointer-events: none; /* 클릭 이벤트를 부모 section에서 처리하도록 설정 */
+        }
         
         .material-symbols-rounded { font-variation-settings: 'FILL' 1, 'wght' 400; color: white; font-size: 28px; }
-        
-        /* 버튼 스타일 통일 */
         .side-btn {
             width: 54px; height: 54px; background: rgba(255, 255, 255, 0.1); 
             border-radius: 50%; display: flex; align-items: center; justify-content: center; 
             backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: transform 0.2s;
         }
-        .side-btn:active { transform: scale(0.85); background: rgba(255, 255, 255, 0.2); }
     </style>
 </head>
 <body>
 
     <div class="video-container" id="feed">
-        <div class="text-white flex items-center justify-center h-full text-xs opacity-40 uppercase tracking-widest">Initializing...</div>
+        <div class="text-white flex items-center justify-center h-full text-xs opacity-40 uppercase tracking-widest">Optimizing Feed...</div>
     </div>
 
     <div id="controls" class="fixed bottom-24 right-6 flex flex-col gap-5 z-50">
-        <button onclick="checkAdmin()" class="side-btn shadow-lg opacity-20 hover:opacity-100 transition-opacity">
-            <span class="material-symbols-rounded">encrypted</span>
-        </button>
-        <button id="dlBtn" onclick="vDownloadCurrent()" class="side-btn shadow-lg">
-            <span class="material-symbols-rounded">download</span>
-        </button>
-        <button onclick="vToggleMute(this)" class="mute-btn side-btn shadow-lg">
-            <span class="material-symbols-rounded">volume_off</span>
-        </button>
+        <button onclick="checkAdmin()" class="side-btn opacity-20"><span class="material-symbols-rounded">encrypted</span></button>
+        <button onclick="vDownloadCurrent()" class="side-btn"><span class="material-symbols-rounded">download</span></button>
+        <button onclick="vToggleMute(this)" class="mute-btn side-btn"><span class="material-symbols-rounded">volume_off</span></button>
     </div>
 
     <div id="uploadModal" class="fixed inset-0 bg-black/95 hidden flex-col items-center justify-center text-white p-5 z-[100] backdrop-blur-md">
@@ -56,7 +66,7 @@
             <input type="file" id="videoInput" accept="video/*" class="mb-6 block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:bg-[#D0BCFF] file:text-[#381E72]">
             <div class="flex gap-3">
                 <button onclick="uploadVideo()" id="uploadBtn" class="flex-1 bg-[#D0BCFF] text-[#381E72] py-4 rounded-full font-bold">Upload</button>
-                <button onclick="closeModal()" class="flex-1 bg-[#49454F] py-4 rounded-full font-bold text-white">Close</button>
+                <button onclick="closeModal()" class="flex-1 bg-[#49454F] py-4 rounded-full font-bold">Close</button>
             </div>
             <div id="status" class="mt-4 text-xs text-center text-[#D0BCFF]"></div>
         </div>
@@ -70,6 +80,7 @@
         let isAdmin = false;
         let isGlobalMuted = true;
         let currentVideoData = { url: '', name: '' };
+        let isScrolling = false; // 스크롤 중인지 체크하는 플래그
 
         async function loadVideos() {
             const feed = document.getElementById('feed');
@@ -89,9 +100,10 @@
             const feed = document.getElementById('feed');
             const section = document.createElement('div');
             section.className = 'video-section';
+            section.onclick = function() { vHandleTouch(this.querySelector('video')); }; // 섹션 클릭으로 변경
             section.innerHTML = `
-                <video data-src="${url}" data-name="${fileName}" playsinline muted preload="metadata" onended="autoNext(this)" onclick="vHandleTouch(this)"></video>
-                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-10 right-6 bg-[#F2B8B5] text-[#601410] px-5 py-2 rounded-full text-xs font-bold z-50 flex items-center gap-1 shadow-xl"><span class="material-symbols-rounded" style="font-size: 18px;">delete</span></button>` : ''}
+                <video data-src="${url}" data-name="${fileName}" playsinline muted preload="metadata" onended="autoNext(this)"></video>
+                ${isAdmin ? `<button onclick="event.stopPropagation(); deleteVideo('${fileName}')" class="absolute top-10 right-6 bg-[#F2B8B5] text-[#601410] px-5 py-2 rounded-full text-xs font-bold z-50 flex items-center gap-1 shadow-xl"><span class="material-symbols-rounded" style="font-size: 18px;">delete</span></button>` : ''}
             `;
             feed.appendChild(section);
         }
@@ -100,29 +112,50 @@
             const obs = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     const v = entry.target.querySelector('video');
-                    if (v && entry.isIntersecting) {
+                    if (!v) return;
+
+                    // [수정] threshold를 높여 확실히 보일 때만 작동하도록 함 (튕김 방지)
+                    if (entry.isIntersecting && entry.intersectionRatio >= 0.8) {
                         if (!v.src) v.src = v.getAttribute('data-src');
-                        // 현재 보고 있는 영상 정보 업데이트 (다운로드용)
                         currentVideoData.url = v.getAttribute('data-src');
                         currentVideoData.name = v.getAttribute('data-name');
                         
                         v.currentTime = 0;
                         v.muted = isGlobalMuted;
                         v.play().catch(() => { v.muted = true; v.play(); });
-                    } else if (v) { v.pause(); }
+                    } else {
+                        v.pause();
+                    }
                 });
-            }, { threshold: 0.6 });
+            }, { 
+                threshold: [0, 0.8], // 80% 기준점 추가
+                rootMargin: "0px"
+            });
             document.querySelectorAll('.video-section').forEach(s => obs.observe(s));
         }
 
-        function vHandleTouch(v) { if (isGlobalMuted) unlockAudio(); v.paused ? v.play() : v.pause(); }
-        function vToggleMute() { isGlobalMuted = !isGlobalMuted; updateMuteStateAll(); }
+        // 스크롤 중임을 감지하여 튕김 현상 억제
+        document.getElementById('feed').addEventListener('scroll', () => {
+            isScrolling = true;
+            clearTimeout(window.scrollTimeout);
+            window.scrollTimeout = setTimeout(() => { isScrolling = false; }, 150);
+        });
+
+        function vHandleTouch(v) { 
+            if (isGlobalMuted) unlockAudio();
+            v.paused ? v.play() : v.pause(); 
+        }
+
+        function vToggleMute(btn) { isGlobalMuted = !isGlobalMuted; updateMuteStateAll(); }
         function unlockAudio() { isGlobalMuted = false; updateMuteStateAll(); }
         function updateMuteStateAll() {
             document.querySelectorAll('video').forEach(v => v.muted = isGlobalMuted);
             document.querySelectorAll('.mute-btn span').forEach(i => i.innerText = isGlobalMuted ? 'volume_off' : 'volume_up');
         }
+
         function autoNext(v) {
+            // [수정] 수동 스크롤 중에는 자동 넘기기 방지하여 꼬임 현상 제거
+            if (isScrolling) return;
             const next = v.closest('.video-section').nextElementSibling;
             if (next) next.scrollIntoView({ behavior: 'smooth' });
             else document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
@@ -130,13 +163,11 @@
 
         async function vDownloadCurrent() {
             if (!currentVideoData.url) return;
-            try {
-                const r = await fetch(currentVideoData.url);
-                const b = await r.blob();
-                const d = window.URL.createObjectURL(b);
-                const a = document.createElement('a');
-                a.href = d; a.download = currentVideoData.name; a.click();
-            } catch (e) { alert("Download failed"); }
+            const r = await fetch(currentVideoData.url);
+            const b = await r.blob();
+            const d = window.URL.createObjectURL(b);
+            const a = document.createElement('a');
+            a.href = d; a.download = currentVideoData.name; a.click();
         }
 
         async function uploadVideo() {
@@ -148,9 +179,10 @@
             if (error) { alert(error.message); b.disabled = false; } else location.reload();
         }
 
-        async function deleteVideo(n) { if (confirm("삭제하시겠습니까?")) { await s_client.storage.from('videos').remove([n]); location.reload(); } }
-        function checkAdmin() { if (prompt("비밀번호 입력") === "0000") { isAdmin = true; document.getElementById('uploadModal').style.display = 'flex'; loadVideos(); } }
+        async function deleteVideo(n) { if (confirm("Delete?")) { await s_client.storage.from('videos').remove([n]); location.reload(); } }
+        function checkAdmin() { if (prompt("Password?") === "0000") { isAdmin = true; document.getElementById('uploadModal').style.display = 'flex'; loadVideos(); } }
         function closeModal() { document.getElementById('uploadModal').style.display = 'none'; }
+        
         loadVideos();
     </script>
 </body>
