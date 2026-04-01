@@ -30,7 +30,7 @@
 <body>
 
     <div class="video-container" id="feed">
-        <div class="text-white flex items-center justify-center h-full text-xs opacity-40 uppercase tracking-widest">Loading Content...</div>
+        <div id="loader" class="text-white flex items-center justify-center h-full text-xs opacity-40 uppercase tracking-widest">Loading...</div>
     </div>
 
     <div id="controls" class="fixed bottom-24 right-6 flex flex-col gap-5 z-50">
@@ -52,34 +52,48 @@
     </div>
 
     <script>
-        // --- 설정 ---
+        // [필독] 본인의 Supabase 정보로 꼭 교체하세요!
         const S_URL = 'https://emizkuoleiqbkobvmbvu.supabase.co'; 
         const S_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXprdW9sZWlxYmtvYnZtYnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzI3OTgsImV4cCI6MjA5MDYwODc5OH0.FKqJ-i72dxKV8LB1dy6WZDJgJmScMYMU1awF5yFhCNU';
-        const s_client = supabase.createClient(S_URL, S_KEY);
+        
+        let s_client;
+        try {
+            s_client = supabase.createClient(S_URL, S_KEY);
+        } catch (e) {
+            console.error("Supabase 초기화 실패:", e);
+        }
 
         let isAdmin = false;
         let isGlobalMuted = true;
         let currentVideoData = { url: '', name: '' };
-        let isScrolling = false; // 자동 스크롤 중 감지 차단 플래그
-        let playTimeout = null;  // 지연 재생 타이머
+        let isScrolling = false;
+        let playTimeout = null;
 
-        // 1. 영상 목록 불러오기
         async function loadVideos() {
             const feed = document.getElementById('feed');
-            const { data, error } = await s_client.storage.from('videos').list();
-            if (error) return;
+            try {
+                const { data, error } = await s_client.storage.from('videos').list();
+                if (error) throw error;
 
-            const shuffled = data.filter(f => f.name !== '.emptyFolderPlaceholder').sort(() => Math.random() - 0.5);
-            feed.innerHTML = '';
-            
-            shuffled.forEach(file => {
-                const { data: { publicUrl } } = s_client.storage.from('videos').getPublicUrl(file.name);
-                addVideoToFeed(publicUrl, file.name);
-            });
-            setupObserver();
+                const shuffled = data.filter(f => f.name !== '.emptyFolderPlaceholder').sort(() => Math.random() - 0.5);
+                
+                if (shuffled.length === 0) {
+                    feed.innerHTML = '<div class="text-white opacity-40 text-center w-full mt-20">No videos found.</div>';
+                    return;
+                }
+
+                feed.innerHTML = '';
+                shuffled.forEach(file => {
+                    const { data: { publicUrl } } = s_client.storage.from('videos').getPublicUrl(file.name);
+                    addVideoToFeed(publicUrl, file.name);
+                });
+                setupObserver();
+            } catch (err) {
+                console.error("데이터 로드 중 오류:", err);
+                feed.innerHTML = `<div class="text-red-400 p-10 text-center">${err.message}</div>`;
+            }
         }
 
-        // 2. 피드에 영상 요소 추가
         function addVideoToFeed(url, fileName) {
             const feed = document.getElementById('feed');
             const section = document.createElement('div');
@@ -87,111 +101,121 @@
             section.onclick = function() { vHandleTouch(this.querySelector('video')); };
             section.innerHTML = `
                 <video data-src="${url}" data-name="${fileName}" playsinline muted preload="metadata" onended="autoNext(this)"></video>
-                ${isAdmin ? `<button onclick="event.stopPropagation(); deleteVideo('${fileName}')" class="absolute top-10 right-6 bg-[#F2B8B5] text-[#601410] px-5 py-2 rounded-full text-xs font-bold z-50 shadow-xl flex items-center"><span class="material-symbols-rounded" style="font-size: 18px;">delete</span></button>` : ''}
+                ${isAdmin ? `<button onclick="event.stopPropagation(); deleteVideo('${fileName}')" class="absolute top-10 right-6 bg-[#F2B8B5] text-[#601410] px-5 py-2 rounded-full text-xs font-bold z-50 shadow-xl">Delete</button>` : ''}
             `;
             feed.appendChild(section);
         }
 
-        // 3. 교차 감지 (Intersection Observer) 설정
         function setupObserver() {
+            const options = { threshold: 0.7 }; // 70% 이상 보일 때
             const obs = new IntersectionObserver((entries) => {
-                if (isScrolling) return; // 자동 이동 중에는 감지 무시
+                if (isScrolling) return;
 
                 entries.forEach(entry => {
                     const v = entry.target.querySelector('video');
                     if (!v) return;
 
-                    if (entry.isIntersecting && entry.intersectionRatio >= 0.8) {
-                        // [핵심] 이전 예약된 재생 취소 (빠르게 지나갈 때 재생 방지)
+                    if (entry.isIntersecting) {
                         if (playTimeout) clearTimeout(playTimeout);
-
-                        // 200ms 동안 머물러야 재생 시작 (디바운싱)
                         playTimeout = setTimeout(() => {
+                            // 다른 모든 영상 정지 (안전 장치)
+                            document.querySelectorAll('video').forEach(vid => {
+                                if (vid !== v) vid.pause();
+                            });
                             playVideo(v);
-                        }, 200);
+                        }, 150); 
                     } else {
-                        // 화면에서 벗어나면 즉시 중지 및 예약 취소
                         v.pause();
-                        if (playTimeout) clearTimeout(playTimeout);
                     }
                 });
-            }, { threshold: [0.8] });
+            }, options);
 
             document.querySelectorAll('.video-section').forEach(s => obs.observe(s));
         }
 
-        // 4. 영상 재생 처리
         function playVideo(v) {
+            if (!v.getAttribute('data-src')) return;
             if (!v.src) v.src = v.getAttribute('data-src');
+            
             currentVideoData.url = v.getAttribute('data-src');
             currentVideoData.name = v.getAttribute('data-name');
             
-            v.currentTime = 0;
             v.muted = isGlobalMuted;
             
+            // 재생 시도 (Promise 에러 핸들링 추가)
             const playPromise = v.play();
             if (playPromise !== undefined) {
-                playPromise.catch(() => {
+                playPromise.catch(error => {
+                    console.log("자동 재생 차단됨 (사용자 상호작용 필요):", error);
+                    // 브라우저가 막으면 무음으로라도 시도
                     v.muted = true;
-                    v.play();
+                    v.play().catch(e => console.error("최종 재생 실패:", e));
                 });
             }
         }
 
-        // 5. 자동 다음 영상 이동
         function autoNext(v) {
             if (isScrolling) return;
-
             const current = v.closest('.video-section');
             const next = current.nextElementSibling;
             const container = document.getElementById('feed');
             
             isScrolling = true;
-
             if (next) {
                 next.scrollIntoView({ behavior: 'smooth' });
             } else {
                 container.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
-            // 스크롤 애니메이션 완료 대기 (700ms)
             setTimeout(() => {
                 isScrolling = false;
-                // 이동 완료 후 현재 중앙에 있는 영상 수동 재생
-                const rect = container.getBoundingClientRect();
-                const centerEl = document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2);
-                const targetVideo = centerEl?.closest('.video-section')?.querySelector('video');
-                if (targetVideo) playVideo(targetVideo);
-            }, 700);
+                // 이동 후 중앙에 있는 영상 강제 재생
+                const centerV = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2)?.closest('.video-section')?.querySelector('video');
+                if (centerV) playVideo(centerV);
+            }, 800);
         }
-
-        // --- 유틸리티 기능 ---
 
         function vHandleTouch(v) { 
             if (isGlobalMuted) unlockAudio();
-            v.paused ? v.play() : v.pause(); 
+            if (v.paused) {
+                v.play().catch(() => { v.muted = true; v.play(); });
+            } else {
+                v.pause();
+            }
         }
 
-        function vToggleMute(btn) { isGlobalMuted = !isGlobalMuted; updateMuteStateAll(); }
-        function unlockAudio() { isGlobalMuted = false; updateMuteStateAll(); }
+        function unlockAudio() {
+            isGlobalMuted = false;
+            updateMuteStateAll();
+        }
+
+        function vToggleMute(btn) {
+            isGlobalMuted = !isGlobalMuted;
+            updateMuteStateAll();
+        }
+
         function updateMuteStateAll() {
             document.querySelectorAll('video').forEach(v => v.muted = isGlobalMuted);
-            document.querySelectorAll('.mute-btn span').forEach(i => i.innerText = isGlobalMuted ? 'volume_off' : 'volume_up');
+            const icon = document.querySelector('.mute-btn span');
+            if (icon) icon.innerText = isGlobalMuted ? 'volume_off' : 'volume_up';
         }
 
+        // --- 기타 기능 (기존과 동일) ---
         async function vDownloadCurrent() {
             if (!currentVideoData.url) return;
-            const r = await fetch(currentVideoData.url);
-            const b = await r.blob();
-            const d = window.URL.createObjectURL(b);
-            const a = document.createElement('a');
-            a.href = d; a.download = currentVideoData.name; a.click();
+            try {
+                const r = await fetch(currentVideoData.url);
+                const b = await r.blob();
+                const d = window.URL.createObjectURL(b);
+                const a = document.createElement('a');
+                a.href = d; a.download = currentVideoData.name; a.click();
+            } catch (e) { alert("다운로드 실패"); }
         }
 
         async function uploadVideo() {
             const i = document.getElementById('videoInput'); if (!i.files[0]) return;
             const b = document.getElementById('uploadBtn'); const s = document.getElementById('status');
-            b.disabled = true; s.innerText = "Processing...";
+            b.disabled = true; s.innerText = "Uploading...";
             const ext = i.files[0].name.split('.').pop();
             const { error } = await s_client.storage.from('videos').upload(`v_${Date.now()}.${ext}`, i.files[0]);
             if (error) { alert(error.message); b.disabled = false; } else location.reload();
@@ -201,7 +225,6 @@
         function checkAdmin() { if (prompt("Password?") === "0000") { isAdmin = true; document.getElementById('uploadModal').style.display = 'flex'; loadVideos(); } }
         function closeModal() { document.getElementById('uploadModal').style.display = 'none'; }
         
-        // 실행 시작
         loadVideos();
     </script>
 </body>
