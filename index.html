@@ -3,100 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>My Private Reel</title>
+    <title>릴스는 오늘도 시끄러워</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: 'Roboto', sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: 'Roboto', sans-serif; -webkit-font-smoothing: antialiased; }
         .video-container { 
-            height: 100dvh; 
-            scroll-snap-type: y mandatory; 
-            overflow-y: scroll; 
-            scrollbar-width: none; 
-            -ms-overflow-style: none;
-            scroll-behavior: smooth;
+            height: 100dvh; scroll-snap-type: y mandatory; overflow-y: scroll; 
+            scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
         }
         .video-container::-webkit-scrollbar { display: none; }
         .video-section { 
-            height: 100dvh; 
-            scroll-snap-align: start; 
-            position: relative; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            background: black; 
+            height: 100dvh; scroll-snap-align: start; scroll-snap-stop: always; 
+            position: relative; display: flex; align-items: center; justify-content: center; background: black; 
         }
         video { max-height: 100%; max-width: 100%; object-fit: contain; background: black; }
         
-        /* 머티리얼 아이콘 공통 스타일 */
-        .material-symbols-rounded {
-            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48;
-            color: white;
-            font-size: 28px;
-        }
+        .material-symbols-rounded { font-variation-settings: 'FILL' 1, 'wght' 400; color: white; font-size: 28px; }
+        
+        /* 버튼 스타일 통일 */
         .side-btn {
-            width: 54px;
-            height: 54px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 54px; height: 54px; background: rgba(255, 255, 255, 0.1); 
+            border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+            backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s;
         }
-        .side-btn:active { transform: scale(0.9); background: rgba(255, 255, 255, 0.2); }
+        .side-btn:active { transform: scale(0.85); background: rgba(255, 255, 255, 0.2); }
     </style>
 </head>
 <body>
 
     <div class="video-container" id="feed">
-        <div class="text-white flex items-center justify-center h-full text-sm opacity-50">Loading...</div>
+        <div class="text-white flex items-center justify-center h-full text-xs opacity-40 uppercase tracking-widest">Initializing...</div>
     </div>
 
-    <div class="fixed bottom-6 left-6 z-50">
-        <button onclick="checkAdmin()" class="w-10 h-10 flex items-center justify-center text-white opacity-10 hover:opacity-100 transition-opacity">
-            <span class="material-symbols-rounded" style="font-size: 20px;">lock</span>
+    <div id="controls" class="fixed bottom-24 right-6 flex flex-col gap-5 z-50">
+        <button onclick="checkAdmin()" class="side-btn shadow-lg opacity-20 hover:opacity-100 transition-opacity">
+            <span class="material-symbols-rounded">encrypted</span>
+        </button>
+        <button id="dlBtn" onclick="vDownloadCurrent()" class="side-btn shadow-lg">
+            <span class="material-symbols-rounded">download</span>
+        </button>
+        <button onclick="vToggleMute(this)" class="mute-btn side-btn shadow-lg">
+            <span class="material-symbols-rounded">volume_off</span>
         </button>
     </div>
 
-    <div id="uploadModal" class="fixed inset-0 bg-black/90 hidden flex-col items-center justify-center text-white p-5 z-[100]">
-        <div class="bg-[#1C1B1F] p-8 rounded-[28px] w-full max-w-sm border border-white/5 shadow-2xl">
-            <h2 class="mb-6 text-xl font-medium text-center">New Upload</h2>
-            <input type="file" id="videoInput" accept="video/*" class="mb-6 block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-[#D0BCFF] file:text-[#381E72]">
-            <div class="flex gap-3 w-full">
-                <button onclick="uploadVideo()" id="uploadBtn" class="flex-1 bg-[#D0BCFF] text-[#381E72] py-3 rounded-full font-bold">Upload</button>
-                <button onclick="closeModal()" class="flex-1 bg-[#49454F] text-white py-3 rounded-full font-bold">Close</button>
+    <div id="uploadModal" class="fixed inset-0 bg-black/95 hidden flex-col items-center justify-center text-white p-5 z-[100] backdrop-blur-md">
+        <div class="bg-[#1C1B1F] p-8 rounded-[32px] w-full max-w-sm border border-white/5 shadow-2xl">
+            <h2 class="mb-6 text-xl font-medium text-center text-[#D0BCFF]">New Content</h2>
+            <input type="file" id="videoInput" accept="video/*" class="mb-6 block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:bg-[#D0BCFF] file:text-[#381E72]">
+            <div class="flex gap-3">
+                <button onclick="uploadVideo()" id="uploadBtn" class="flex-1 bg-[#D0BCFF] text-[#381E72] py-4 rounded-full font-bold">Upload</button>
+                <button onclick="closeModal()" class="flex-1 bg-[#49454F] py-4 rounded-full font-bold text-white">Close</button>
             </div>
             <div id="status" class="mt-4 text-xs text-center text-[#D0BCFF]"></div>
         </div>
     </div>
 
     <script>
-        // --- [설정] 본인의 정보를 입력하세요 ---
         const S_URL = 'https://emizkuoleiqbkobvmbvu.supabase.co'; 
         const S_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXprdW9sZWlxYmtvYnZtYnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzI3OTgsImV4cCI6MjA5MDYwODc5OH0.FKqJ-i72dxKV8LB1dy6WZDJgJmScMYMU1awF5yFhCNU';
         const s_client = supabase.createClient(S_URL, S_KEY);
 
         let isAdmin = false;
         let isGlobalMuted = true;
+        let currentVideoData = { url: '', name: '' };
 
         async function loadVideos() {
             const feed = document.getElementById('feed');
             const { data, error } = await s_client.storage.from('videos').list();
             if (error) return;
 
-            const shuffled = data
-                .filter(file => file.name !== '.emptyFolderPlaceholder')
-                .sort(() => Math.random() - 0.5);
-
-            if (shuffled.length === 0) {
-                feed.innerHTML = '<div class="text-white opacity-30">No videos found.</div>';
-                return;
-            }
-
+            const shuffled = data.filter(f => f.name !== '.emptyFolderPlaceholder').sort(() => Math.random() - 0.5);
             feed.innerHTML = '';
             shuffled.forEach(file => {
                 const { data: { publicUrl } } = s_client.storage.from('videos').getPublicUrl(file.name);
@@ -110,72 +90,10 @@
             const section = document.createElement('div');
             section.className = 'video-section';
             section.innerHTML = `
-                <video src="${url}" playsinline muted preload="none" onended="autoNext(this)" onclick="vHandleTouch(this)"></video>
-                
-                <div class="absolute bottom-24 right-6 flex flex-col gap-5 z-50">
-                    <button onclick="vDownload('${url}', '${fileName}')" class="side-btn">
-                        <span class="material-symbols-rounded">download</span>
-                    </button>
-                    <button onclick="vToggleMute(this)" class="mute-btn side-btn">
-                        <span class="material-symbols-rounded">volume_off</span>
-                    </button>
-                </div>
-
-                ${isAdmin ? `
-                <button onclick="deleteVideo('${fileName}')" class="absolute top-8 right-6 bg-[#F2B8B5] text-[#601410] px-5 py-2 rounded-full text-xs font-bold z-50 flex items-center gap-1">
-                    <span class="material-symbols-rounded" style="font-size: 16px;">delete</span>Delete
-                </button>` : ''}
+                <video data-src="${url}" data-name="${fileName}" playsinline muted preload="metadata" onended="autoNext(this)" onclick="vHandleTouch(this)"></video>
+                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-10 right-6 bg-[#F2B8B5] text-[#601410] px-5 py-2 rounded-full text-xs font-bold z-50 flex items-center gap-1 shadow-xl"><span class="material-symbols-rounded" style="font-size: 18px;">delete</span></button>` : ''}
             `;
             feed.appendChild(section);
-        }
-
-        function vHandleTouch(v) {
-            if (isGlobalMuted) unlockAudio();
-            v.paused ? v.play() : v.pause();
-        }
-
-        async function vDownload(url, fileName) {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = fileName;
-            a.click();
-        }
-
-        function vToggleMute(btn) {
-            isGlobalMuted = !isGlobalMuted;
-            updateMuteStateAll();
-        }
-
-        function unlockAudio() {
-            isGlobalMuted = false;
-            updateMuteStateAll();
-        }
-
-        function updateMuteStateAll() {
-            const videos = document.querySelectorAll('video');
-            const buttons = document.querySelectorAll('.mute-btn .material-symbols-rounded');
-            videos.forEach(v => v.muted = isGlobalMuted);
-            buttons.forEach(icon => icon.innerText = isGlobalMuted ? 'volume_off' : 'volume_up');
-        }
-
-        // 영상이 끝나면 다음 섹션으로, 마지막이면 처음으로!
-        function autoNext(v) {
-            const currentSection = v.closest('.video-section');
-            const nextSection = currentSection.nextElementSibling;
-            
-            if (nextSection) {
-                // 다음 영상이 있으면 다음으로 이동
-                nextSection.scrollIntoView({ behavior: 'smooth' });
-            } else {
-                // [추가] 마지막 영상이면 맨 위 첫 번째 영상으로 부드럽게 이동
-                const firstSection = document.querySelector('.video-section');
-                if (firstSection) {
-                    firstSection.scrollIntoView({ behavior: 'smooth' });
-                }
-            }
         }
 
         function setupObserver() {
@@ -183,48 +101,56 @@
                 entries.forEach(entry => {
                     const v = entry.target.querySelector('video');
                     if (v && entry.isIntersecting) {
+                        if (!v.src) v.src = v.getAttribute('data-src');
+                        // 현재 보고 있는 영상 정보 업데이트 (다운로드용)
+                        currentVideoData.url = v.getAttribute('data-src');
+                        currentVideoData.name = v.getAttribute('data-name');
+                        
                         v.currentTime = 0;
                         v.muted = isGlobalMuted;
                         v.play().catch(() => { v.muted = true; v.play(); });
-                    } else if (v) {
-                        v.pause();
-                    }
+                    } else if (v) { v.pause(); }
                 });
             }, { threshold: 0.6 });
             document.querySelectorAll('.video-section').forEach(s => obs.observe(s));
         }
 
+        function vHandleTouch(v) { if (isGlobalMuted) unlockAudio(); v.paused ? v.play() : v.pause(); }
+        function vToggleMute() { isGlobalMuted = !isGlobalMuted; updateMuteStateAll(); }
+        function unlockAudio() { isGlobalMuted = false; updateMuteStateAll(); }
+        function updateMuteStateAll() {
+            document.querySelectorAll('video').forEach(v => v.muted = isGlobalMuted);
+            document.querySelectorAll('.mute-btn span').forEach(i => i.innerText = isGlobalMuted ? 'volume_off' : 'volume_up');
+        }
+        function autoNext(v) {
+            const next = v.closest('.video-section').nextElementSibling;
+            if (next) next.scrollIntoView({ behavior: 'smooth' });
+            else document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function vDownloadCurrent() {
+            if (!currentVideoData.url) return;
+            try {
+                const r = await fetch(currentVideoData.url);
+                const b = await r.blob();
+                const d = window.URL.createObjectURL(b);
+                const a = document.createElement('a');
+                a.href = d; a.download = currentVideoData.name; a.click();
+            } catch (e) { alert("Download failed"); }
+        }
+
         async function uploadVideo() {
-            const input = document.getElementById('videoInput');
-            const file = input.files[0];
-            if (!file) return;
-            const btn = document.getElementById('uploadBtn');
-            const stat = document.getElementById('status');
-            btn.disabled = true;
-            stat.innerText = "Uploading to Cloud...";
-            const ext = file.name.split('.').pop();
-            const safeName = `v_${Date.now()}.${ext}`;
-            const { error } = await s_client.storage.from('videos').upload(safeName, file);
-            if (error) { alert(error.message); btn.disabled = false; }
-            else { location.reload(); }
+            const i = document.getElementById('videoInput'); if (!i.files[0]) return;
+            const b = document.getElementById('uploadBtn'); const s = document.getElementById('status');
+            b.disabled = true; s.innerText = "Uploading...";
+            const ext = i.files[0].name.split('.').pop();
+            const { error } = await s_client.storage.from('videos').upload(`v_${Date.now()}.${ext}`, i.files[0]);
+            if (error) { alert(error.message); b.disabled = false; } else location.reload();
         }
 
-        async function deleteVideo(name) {
-            if (confirm("Delete permanently?")) {
-                await s_client.storage.from('videos').remove([name]);
-                location.reload();
-            }
-        }
-
-        function checkAdmin() {
-            if (prompt("Admin Password (0000)") === "0000") {
-                isAdmin = true;
-                document.getElementById('uploadModal').style.display = 'flex';
-                loadVideos(); 
-            }
-        }
+        async function deleteVideo(n) { if (confirm("삭제하시겠습니까?")) { await s_client.storage.from('videos').remove([n]); location.reload(); } }
+        function checkAdmin() { if (prompt("비밀번호 입력") === "0000") { isAdmin = true; document.getElementById('uploadModal').style.display = 'flex'; loadVideos(); } }
         function closeModal() { document.getElementById('uploadModal').style.display = 'none'; }
-
         loadVideos();
     </script>
 </body>
