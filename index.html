@@ -8,20 +8,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: black; font-family: sans-serif; }
-        .video-container { height: 100dvh; scroll-snap-type: y mandatory; overflow-y: scroll; scrollbar-width: none; }
+        .video-container { height: 100dvh; scroll-snap-type: y mandatory; overflow-y: scroll; scrollbar-width: none; -ms-overflow-style: none; }
         .video-container::-webkit-scrollbar { display: none; }
         .video-section { height: 100dvh; scroll-snap-align: start; position: relative; display: flex; align-items: center; justify-content: center; background: black; }
         video { max-height: 100%; max-width: 100%; object-fit: contain; }
-        .admin-btn { position: absolute; top: 10px; right: 10px; z-index: 50; }
     </style>
 </head>
 <body>
 
     <div class="video-container" id="feed">
-        </div>
+        <div class="text-white flex items-center justify-center h-full">영상을 불러오는 중...</div>
+    </div>
 
-    <div id="adminPanel" class="fixed bottom-5 right-5 z-50">
-        <button onclick="checkAdmin()" id="lockBtn" class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-md opacity-30 hover:opacity-100">🔒</button>
+    <div class="fixed bottom-5 right-5 z-50">
+        <button onclick="checkAdmin()" class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-md opacity-30 hover:opacity-100">🔒</button>
     </div>
 
     <div id="uploadModal" class="fixed inset-0 bg-black/90 hidden flex-col items-center justify-center text-white p-5 z-[100]">
@@ -36,44 +36,49 @@
 
     <script>
         // --- 설정 (본인의 정보를 입력하세요) ---
-        const SUPABASE_URL = 'https://emizkuoleiqbkobvmbvu.supabase.co'; 
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXprdW9sZWlxYmtvYnZtYnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzI3OTgsImV4cCI6MjA5MDYwODc5OH0.FKqJ-i72dxKV8LB1dy6WZDJgJmScMYMU1awF5yFhCNU';
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const S_URL = 'https://emizkuoleiqbkobvmbvu.supabase.co'; 
+        const S_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXprdW9sZWlxYmtvYnZtYnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzI3OTgsImV4cCI6MjA5MDYwODc5OH0.FKqJ-i72dxKV8LB1dy6WZDJgJmScMYMU1awF5yFhCNU';
+        
+        // 에러 방지를 위해 변수 이름을 s_client로 변경
+        const s_client = supabase.createClient(S_URL, S_KEY);
 
         let isAdmin = false;
 
-        // 1. 영상 목록 불러오기
         async function loadVideos() {
             const feed = document.getElementById('feed');
-            feed.innerHTML = ''; // 초기화
-
-            const { data, error } = await supabase.storage.from('videos').list();
+            const { data, error } = await s_client.storage.from('videos').list('', {
+                sortBy: { column: 'created_at', order: 'desc' }
+            });
             
-            if (data) {
-                data.forEach(file => {
-                    const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(file.name);
-                    addVideoToFeed(publicUrl, file.name);
-                });
+            if (error) {
+                feed.innerHTML = '<div class="text-white p-10">연결 오류: ' + error.message + '</div>';
+                return;
             }
+
+            feed.innerHTML = '';
+            if (data.length === 0) {
+                feed.innerHTML = '<div class="text-white p-10 text-center">영상이 없습니다.<br>오른쪽 하단 자물쇠를 눌러 업로드하세요.</div>';
+            }
+
+            data.forEach(file => {
+                if (file.name === '.emptyFolderPlaceholder') return;
+                const { data: { publicUrl } } = s_client.storage.from('videos').getPublicUrl(file.name);
+                addVideoToFeed(publicUrl, file.name);
+            });
         }
 
-        // 2. 피드에 영상 추가 (삭제 버튼 포함)
         function addVideoToFeed(url, fileName) {
             const feed = document.getElementById('feed');
             const section = document.createElement('div');
             section.className = 'video-section';
             section.innerHTML = `
                 <video src="${url}" loop muted playsinline onclick="this.paused ? this.play() : this.pause()"></video>
-                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-20 right-5 bg-red-600 text-white px-3 py-1 rounded-full text-xs opacity-50 hover:opacity-100">삭제</button>` : ''}
-                <div class="absolute bottom-10 left-5 text-white pointer-events-none">
-                    <p class="font-bold text-sm opacity-70">${fileName}</p>
-                </div>
+                ${isAdmin ? `<button onclick="deleteVideo('${fileName}')" class="absolute top-5 right-5 bg-red-600 text-white px-4 py-2 rounded-full text-xs z-50">삭제</button>` : ''}
             `;
             feed.appendChild(section);
             setupObserver();
         }
 
-        // 3. 업로드 로직
         async function uploadVideo() {
             const fileInput = document.getElementById('videoInput');
             const file = fileInput.files[0];
@@ -82,55 +87,54 @@
             const btn = document.getElementById('uploadBtn');
             const status = document.getElementById('status');
             btn.disabled = true;
-            status.innerText = "업로드 중... 잠시만 기다리세요.";
+            status.innerText = "업로드 중... (영상이 크면 오래 걸립니다)";
 
-            const fileName = `${Date.now()}_${file.name}`;
-            const { data, error } = await supabase.storage.from('videos').upload(fileName, file);
+            const fileName = Date.now() + "_" + file.name;
+            const { data, error } = await s_client.storage.from('videos').upload(fileName, file);
 
             if (error) {
                 alert("업로드 실패: " + error.message);
+                btn.disabled = false;
+                status.innerText = "";
             } else {
                 alert("업로드 성공!");
-                location.reload(); // 새로고침해서 반영
+                location.reload();
             }
         }
 
-        // 4. 삭제 로직
         async function deleteVideo(fileName) {
             if (!confirm("정말 삭제할까요?")) return;
-            const { data, error } = await supabase.storage.from('videos').remove([fileName]);
+            const { error } = await s_client.storage.from('videos').remove([fileName]);
             if (error) alert("삭제 실패");
             else location.reload();
         }
 
-        // 5. 관리자 인증 (비밀번호: 0000)
         function checkAdmin() {
-            const pw = prompt("비밀번호 0000을 입력하세요");
+            const pw = prompt("비밀번호(0000)를 입력하세요.");
             if (pw === "0000") {
-                console.log("인증 성공"); // 확인용
-                document.getElementById('uploadModal').style.display = 'flex';
                 isAdmin = true;
+                document.getElementById('uploadModal').style.display = 'flex';
                 loadVideos(); 
-            } else {
-                alert("비밀번호가 틀렸습니다.");
+            } else if (pw !== null) {
+                alert("틀렸습니다.");
             }
         }
 
         function closeModal() { document.getElementById('uploadModal').style.display = 'none'; }
 
-        // 6. 스크롤 자동재생 제어
         function setupObserver() {
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     const v = entry.target.querySelector('video');
-                    if (entry.isIntersecting) v.play().catch(() => {});
-                    else v.pause();
+                    if (v) {
+                        if (entry.isIntersecting) v.play().catch(() => {});
+                        else v.pause();
+                    }
                 });
-            }, { threshold: 0.7 });
+            }, { threshold: 0.6 });
             document.querySelectorAll('.video-section').forEach(s => observer.observe(s));
         }
 
-        // 앱 시작 시 로드
         loadVideos();
     </script>
 </body>
