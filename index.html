@@ -76,53 +76,55 @@ function getToken(){
   return token;
 }
 
-async function upload(file){
+async function uploadMultiple(files){
   const token = getToken();
   if(!token) return;
 
-  if(file.size > 90*1024*1024){ alert("파일 너무 큼"); return; }
+  for(const file of files){
+    if(file.size > 90*1024*1024){ alert(file.name+" 파일 너무 큼"); continue; }
 
-  const base64 = await fileToBase64(file);
-  const filePath = `videos/${Date.now()}_${file.name}`;
+    const base64 = await fileToBase64(file);
+    const filePath = `videos/${Date.now()}_${file.name}`;
 
-  const uploadRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${filePath}`,
-  {
-    method:"PUT",
-    headers:{ Authorization:`Bearer ${token}`, Accept:"application/vnd.github+json" },
-    body:JSON.stringify({ message:"upload video", content:base64, branch:BRANCH })
-  });
+    const uploadRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${filePath}`,
+    {
+      method:"PUT",
+      headers:{ Authorization:`Bearer ${token}`, Accept:"application/vnd.github+json" },
+      body:JSON.stringify({ message:"upload video", content:base64, branch:BRANCH })
+    });
 
-  if(!uploadRes.ok){
-    const err = await uploadRes.json();
-    alert(err.message);
-    return;
+    if(!uploadRes.ok){
+      const err = await uploadRes.json();
+      alert(err.message);
+      continue;
+    }
+
+    const rawUrl = `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${filePath}`;
+
+    let decoded=[]; let sha;
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`,
+      { headers:{ Authorization:`Bearer ${token}` }});
+
+    if(res.status!==404){
+      const json = await res.json();
+      sha = json.sha;
+      decoded = JSON.parse(atob(json.content));
+    }
+
+    const updated = [{ id:Date.now(), url:rawUrl, title:file.name }, ...decoded];
+
+    await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`,
+    {
+      method:"PUT",
+      headers:{ Authorization:`Bearer ${token}`, Accept:"application/vnd.github+json" },
+      body:JSON.stringify({
+        message:"update json",
+        content:btoa(unescape(encodeURIComponent(JSON.stringify(updated,null,2)))),
+        sha,
+        branch:BRANCH
+      })
+    });
   }
-
-  const rawUrl = `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${filePath}`;
-
-  let decoded=[]; let sha;
-  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`,
-    { headers:{ Authorization:`Bearer ${token}` }});
-
-  if(res.status!==404){
-    const json = await res.json();
-    sha = json.sha;
-    decoded = JSON.parse(atob(json.content));
-  }
-
-  const updated = [{ id:Date.now(), url:rawUrl, title:file.name }, ...decoded];
-
-  await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${JSON_PATH}`,
-  {
-    method:"PUT",
-    headers:{ Authorization:`Bearer ${token}`, Accept:"application/vnd.github+json" },
-    body:JSON.stringify({
-      message:"update json",
-      content:btoa(unescape(encodeURIComponent(JSON.stringify(updated,null,2)))),
-      sha,
-      branch:BRANCH
-    })
-  });
 
   alert("업로드 완료 → 새로고침");
 }
@@ -132,9 +134,9 @@ function render(){
     app.innerHTML=`
       <div class="center">
         <div>NO VIDEO</div>
-        <input type="file" accept="video/*" id="upload"/>
+        <input type="file" accept="video/*" id="upload" multiple/>
       </div>`;
-    document.getElementById("upload").onchange=e=>upload(e.target.files[0]);
+    document.getElementById("upload").onchange=e=>uploadMultiple(e.target.files);
     return;
   }
 
@@ -148,11 +150,11 @@ function render(){
         <button onclick="prev()">UP</button>
         <button onclick="next()">DOWN</button>
         <button onclick="localStorage.removeItem('gh_token')">RESET</button>
-        <input type="file" accept="video/*" id="upload"/>
+        <input type="file" accept="video/*" id="upload" multiple/>
       </div>
     </div>`;
 
-  document.getElementById("upload").onchange=e=>upload(e.target.files[0]);
+  document.getElementById("upload").onchange=e=>uploadMultiple(e.target.files);
 }
 
 loadVideos();
